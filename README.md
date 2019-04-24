@@ -10,4 +10,4 @@ Available soon.
 Sean Hooten
 
 # License
-reqns is currently released under the GPL license (see LICENSE.md for details)
+reqns is currently released under the BSD-2 Clause license (see LICENSE.md for details)
