@@ -6,7 +6,7 @@ with open("README", 'r') as f:
 setup(
    name='reqns',
    version='0.1',
-   description='A versatile, parallelized LED and Laser dynamic rate equation solver',
+   description='A versatile, parallelized LED and laser rate equations dynamic solver',
    license="BSD-2-Clause",
    long_description=long_description,
    author='Sean Hooten',

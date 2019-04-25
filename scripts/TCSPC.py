@@ -2,7 +2,7 @@ from math import pi
 import numpy as np
 from physical_constants import *
 import active_material
-import LED_new as LED
+import LED
 import rate_equations
 import parallel_toolkit
 
