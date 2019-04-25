@@ -1,11 +1,24 @@
-import numpy as np
+#!/usr/bin/env python
+"""
+Provides RateEquations class.
+
+RateEquations allows one to calculate the rate dynamics of a given LED
+instance.
+"""
+
 from math import pi, ceil
-from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
-#import material_config
+import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.optimize import curve_fit
-#from fdint import fdk
+
+from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
 import misc
+
+__author__ = "Sean Hooten"
+__license__ = "BSD-2-Clause"
+__version__ = "0.1"
+__maintainer__ = "Sean Hooten"
+__status__ = "development"
 
 class RateEquations(object):
     def __init__(self, LED, t, I_func, V=1,

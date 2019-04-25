@@ -1,8 +1,19 @@
-import numpy as np
+#!/usr/bin/env python
+"""
+Provides a few useful functions
+"""
+
 from math import pi
+import numpy as np
+from fdint import fdk
+
 from physical_constants import *
 
-from fdint import fdk
+__author__ = "Sean Hooten"
+__license__ = "BSD-2-Clause"
+__version__ = "0.1"
+__maintainer__ = "Sean Hooten"
+__status__ = "development"
 
 def fermi_dirac_integral(k, phi):
     if k==0.5:

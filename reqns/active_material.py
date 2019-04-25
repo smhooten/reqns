@@ -1,8 +1,24 @@
-import numpy as np
+#!/usr/bin/env python
+"""
+Provides class ActiveMaterial and subclasses Bulk and QuantumWell
+
+Bulk and QuantumWell classes can be used to calculate carrier
+concentrations and material gain spectra. These are indexed by
+input vector of Fermi-level differences.
+"""
+
 from math import pi, ceil
-from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
+import numpy as np
 from scipy.optimize import fsolve
+
+from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
 import misc
+
+__author__ = "Sean Hooten"
+__license__ = "BSD-2-Clause"
+__version__ = "0.1"
+__maintainer__ = "Sean Hooten"
+__status__ = "development"
 
 class ActiveMaterial(object):
     def __init__(self):

@@ -1,13 +1,23 @@
-import numpy as np
-from math import pi, ceil
-#from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
-import copy
+#!/usr/bin/env python
+"""
+Provides useful functions and variables that can be used for parallel
+operations.
+"""
 
+from math import pi, ceil
+import copy
+import numpy as np
 from mpi4py import MPI
 
 COMM = MPI.COMM_WORLD
 RANK = COMM.Get_rank()
 SIZE = COMM.Get_size()
+
+__author__ = "Sean Hooten"
+__license__ = "BSD-2-Clause"
+__version__ = "0.1"
+__maintainer__ = "Sean Hooten"
+__status__ = "development"
 
 #def parallel_partition(num_sims, size, rank):
 #    # Returns curated 1D partition for each processor given the total number of

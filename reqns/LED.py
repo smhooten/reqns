@@ -1,9 +1,28 @@
 import numpy as np
+#!/usr/bin/env python
+"""
+Provides class LED_bulk, nanoLED_bulk, LED_QW, and nanoLED_QW. Also provides
+classes OpticalCavity and Antenna
+
+LED_bulk and LED_QW classes can be used to calculate spontaneous emission
+spectra from large volume/area LED devices, as well as radiative and
+nonradiative recombination rates. OpticalCavity and Antenna classes allow one
+to specify optical antenna enhancement due to the Purcell effect (effectively
+modifies the matrix element). nanoLED_bulk and nanoLED_QW classes provide the
+spontaneous emission spectra after antenna enhancement.
+"""
+
 from math import pi, ceil
+from fdint import fdk
+
 from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
 import misc
 
-from fdint import fdk
+__author__ = "Sean Hooten"
+__license__ = "BSD-2-Clause"
+__version__ = "0.1"
+__maintainer__ = "Sean Hooten"
+__status__ = "development"
 
 class LED_bulk(object):
     def __init__(self, omega, DF, T, active_mat):
