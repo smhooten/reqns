@@ -12,7 +12,7 @@ setup(
    author='Sean Hooten',
    author_email='shooten@eecs.berkeley.edu',
    url="http://github.com/smhooten/reqns",
-   packages=['reqns'], 
+   packages=['reqns'],
    install_requires=['numpy', 'scipy', 'fdint', 'mpi4py'],
    zip_safe=False
    scripts=[
@@ -22,4 +22,4 @@ setup(
 
 
 
-#package_data={'emopt':['data/*']},
+#package_data={'reqns':['data/*']},

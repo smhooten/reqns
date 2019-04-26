@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Provides class ActiveMaterial and subclasses Bulk and QuantumWell
+Provides class ActiveMaterial and subclasses Bulk and QuantumWell.
 
 Bulk and QuantumWell classes can be used to calculate carrier
 concentrations and material gain spectra. These are indexed by
@@ -8,10 +8,11 @@ input vector of Fermi-level differences.
 """
 
 from math import pi, ceil
+from abc import ABCMeta, abstractmethod, abstractproperty
 import numpy as np
 from scipy.optimize import fsolve
 
-from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
+from physical_constants import h, hbar, c, q, eps0, m0, k
 import misc
 
 __author__ = "Sean Hooten"
@@ -21,27 +22,70 @@ __maintainer__ = "Sean Hooten"
 __status__ = "development"
 
 class ActiveMaterial(object):
-    def __init__(self):
+    """Superclass for active radiative materials.
+
+    Includes properties and methods that are common to calculating gain in
+    active materials.
+    """
+
+    __metaclass__ = ABCMeta
+
+    def __init__(self, Na, Nd, T):
+        self._Na = Na
+        self._Nd = Nd
+        self._T = T
+        self._correct_build = False
+
+    @property
+    def Na(self):
+        return self._Na
+
+    @Na.setter
+    def Na(self, val):
+        self._Na = val
+        self._correct_build = False
+
+    @property
+    def Nd(self):
+        return self._Nd
+
+    @Nd.setter
+    def Nd(self, val):
+        self._Nd = val
+        self._correct_build = False
+
+    @property
+    def T(self):
+        return self._T
+
+    @T.setter
+    def T(self, val):
+        self._T = val
+        self._correct_build = False
+
+    @abstractproperty
+    def ni(self):
         pass
 
-    def fermi_dirac_function(self, E, F, T):
-        kT = k*T
+    def fermi_dirac_function(self, E, F):
+        kT = k*self.T
         f = 1 / (1 + np.exp( (E - F) / kT ))
         return f
 
-    def fermi_inversion_function(self, E1, Fv, E2, Fc, T):
-        f2 = self.fermi_dirac_function(E2, Fc, T)
-        f1 = self.fermi_dirac_function(E1, Fv, T)
+    def fermi_inversion_function(self, E1, Fv, E2, Fc):
+        f2 = self.fermi_dirac_function(E2, Fc)
+        f1 = self.fermi_dirac_function(E1, Fv)
         return f2 - f1
 
-    def fermi_emission_factor(self, E1, Fv, E2, Fc, T):
-        f1 = 1 - self.fermi_dirac_function(E1, Fv, T)
-        f2 = self.fermi_dirac_function(E2, Fc, T)
-        return f2 * f1
+#    def fermi_emission_factor(self, E1, Fv, E2, Fc, T):
+#        f1 = 1 - self.fermi_dirac_function(E1, Fv, T)
+#        f2 = self.fermi_dirac_function(E2, Fc, T)
+#        return f2 * f1
 
     def calc_n0_p0(self):
         # calculate n and p at zero bias
         # requires that self.ni is defined
+
         if self.Nd - self.Na > 10*self.ni:
             n0 = self.Nd-self.Na
             p0 = self.ni**2/n0
@@ -55,106 +99,243 @@ class ActiveMaterial(object):
             p0 = 0.5*(self.Na - self.Nd) + \
                     np.sqrt((0.5*(self.Na-self.Nd))**2+self.ni**2)
 
-        self.n0 = n0
-        self.p0 = p0
+        self._n0 = n0
+        self._p0 = p0
 
 class Bulk(ActiveMaterial):
-    def __init__(self, omega, DF_max, DF_dis, T, n, me, mh, Ep, M, Eg, ni, Nc,
-                Nv, Na, Nd):
-        # Required Material Data
-        self.n = n
-        self.me = me
-        self.mh = mh
-        self.mr = 1 / (1/self.me + 1/self.mh)
-        self.Ep = Ep
-        self.M = M
-        self.Eg = Eg
-        self.ni = ni
-        self.Nc = Nc
-        self.Nv = Nv
+    """TO DO:
+        include support for light and heavy hole bands
+    """
 
-        self.Na = Na
-        self.Nd = Nd
-        
+    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, me, mh, M, Eg,
+                 Nc=None, Nv=None):
+        super(Bulk, self).__init__(Na, Nd, T)
+        # Required Material Data
+        self._n = n
+        self._me = me
+        self._mh = mh
+        self._mr = 1 / (1/self.me + 1/self.mh)
+        self._M = M
+        self._Eg = Eg
+
+        if Nc is None:
+            self._Nc = 2 * (2 * pi * me * k *self.T / h**2)**(1.5)
+        else:
+            self._Nc = Nc
+
+        if Nv is None:
+            self._Nv = 2 * (2 * pi * mh * k * self.T / h**2)**(1.5)
+        else:
+            self._Nv = Nv
+
         # Required User Inputs
-        self.DF_max = DF_max # assume minimum 0, max defined by source
-        self.T = T # material data currently only valid for T = 300K
-        self.omega = omega #must choose sufficiently discretized and large
-        self.DF_dis = DF_dis # (roughly) discretization of DF points
+        self._DF_max = DF_max # assume minimum 0, max defined by source
+        self._omega = omega # must choose sufficiently discretized and large
+        self._DF_dis = DF_dis # (roughly) discretization of DF points
 
         # To be calculated with self.build()
-        self.DF = None
-        self.n0 = None
-        self.p0 = None
-        self.Fc = None
-        self.Fv = None
-        self.rho = None
-        self.gain = None
-        self.N = None
-        self.P = None
-        self.E1 = None
-        self.E2 = None
+        self._DF = None
+        self._ni = None
+        self._n0 = None
+        self._p0 = None
+        self._Fc = None
+        self._Fv = None
+        self._N = None
+        self._P = None
+        self._E1 = None
+        self._E2 = None
+        self._rho = None
+        self._fg = None
+        self._gain = None
 
-        self.fg = None
-        self.fe = None
+        self._correct_build = False
+
+    @property
+    def n(self):
+        return self._n
+
+    @n.setter
+    def n(self, val):
+        self._n = val
+        self._correct_build = False
+
+    @property
+    def me(self):
+        return self._me
+
+    @me.setter
+    def me(self, val):
+        self._me = val
+        self._mr = 1 / (1/self._me + 1/self._mh)
+        self._correct_build = False
+
+    @property
+    def mh(self):
+        return self._mh
+
+    @mh.setter
+    def mh(self, val):
+        self._mh = val
+        self._mr = 1 / (1/self._me + 1/self._mh)
+        self._correct_build = False
+
+    @property
+    def mr(self):
+        return self._mr
+
+    @property
+    def M(self):
+        return self._M
+
+    @M.setter
+    def M(self, val):
+        self._M = val
+        self._correct_build = False
+
+    @property
+    def Eg(self):
+        return self._Eg
+
+    @Eg.setter
+    def Eg(self, val):
+        self._Eg = val
+        self._correct_build = False
+
+    @property
+    def Nc(self):
+        return self._Nc
+
+    @Nc.setter
+    def Nc(self, val):
+        self._Nc = val
+        self._correct_build = False
+
+    @property
+    def Nv(self):
+        return self._Nv
+
+    @Nv.setter
+    def Nv(self, val):
+        self._Nv = val
+        self._correct_build = False
+
+    @property
+    def omega(self):
+        return self._omega
+
+    @omega.setter
+    def omega(self, val):
+        self._omega = val
+        self._correct_build = False
+
+    @property
+    def DF_max(self):
+        return self._DF_max
+
+    @DF_max.setter
+    def DF_max(self, val):
+        self._DF_max = val
+        self._correct_build = False
+
+    @property
+    def DF_dis(self):
+        return self._DF_dis
+
+    @DF_dis.setter
+    def DF_dis(self, val):
+        self._DF_dis = val
+        self._correct_build = False
+
+    @property
+    def DF(self):
+        return self._DF
+
+    @property
+    def ni(self):
+        return self._ni
+
+    @property
+    def n0(self):
+        return self._n0
+
+    @property
+    def p0(self):
+        return self._p0
+
+    @property
+    def Fc(self):
+        return self._Fc
+
+    @property
+    def Fv(self):
+        return self._Fv
+
+    @property
+    def N(self):
+        return self._N
+
+    @property
+    def P(self):
+        return self._P
+
+    @property
+    def rho(self):
+        return self._rho
+
+    @property
+    def fg(self):
+        return self._fg
+
+    @property
+    def gain(self):
+        return self._gain
+
+    @property
+    def E1(self):
+        return self._E1
+
+    @property
+    def E2(self):
+        return self._E2
+
+    @property
+    def correct_build(self):
+        return self._correct_build
 
     def build(self):
-        self.calc_n0_p0()
-        self.calc_N_P()
-        self.calc_DOSjoint()
-        self.calc_E1()
-        self.calc_E2()
+        self._calc_N_P()
+        self._calc_DOSjoint()
+        self._calc_E1()
+        self._calc_E2()
 
-        gain = np.zeros((self.omega.size, self.DF.size))
-        fe = np.zeros((self.omega.size, self.DF.size))
         fg = np.zeros((self.omega.size, self.DF.size))
+        gain = np.zeros((self.omega.size, self.DF.size))
 
         for i in range(self.DF.size):
-            fg[:, i] = self.fermi_inversion_function(self.Fv[i], self.Fc[i], self.T)
-            fe[:, i] = self.fermi_emission_factor(self.Fv[i], self.Fc[i], self.T)
-            gain[:, i] = self.get_gain(fg[:, i])
+            fg[:, i] = self._fermi_inversion_function(self.Fv[i], self.Fc[i])
+            gain[:, i] = self._calc_gain(fg[:, i])
 
-        self.fg = fg
-        self.fe = fe
-        self.gain = gain
+        self._fg = fg
+        self._gain = gain
 
+        self._correct_build = True
 
-    def update(self, omega, DF_max, DF_dis, T):
-        # Material data can be updated simply by setting the material values
-        self.DF_max = DF_max
-        self.DF_dis = DF_dis
-        self.T = T
-        self.omega = omega
-
-        self.build()
-
-    def fermi_inversion_function(self, Fv, Fc, T):
+    def _fermi_inversion_function(self, Fv, Fc):
         E1 = self.E1
         E2 = self.E2
-
-        fg = super(Bulk, self).fermi_inversion_function(E1, Fv, E2, Fc, T)
-
+        fg = super(Bulk, self).fermi_inversion_function(E1, Fv, E2, Fc)
         return fg
 
-    def fermi_emission_factor(self, Fv, Fc, T):
-        E1 = self.E1
-        E2 = self.E2
-
-        fe = super(Bulk, self).fermi_emission_factor(E1, Fv, E2, Fc, T)
-
-        return fe
-
-    def get_gain(self, fg):
+    def _calc_gain(self, fg):
         rho = self.rho
         C0 = pi*q**2 / (self.n * c * eps0 * m0**2 * self.omega)
         gain = C0 * rho * self.M * fg
-
         return gain
 
-    def calc_N_P(self):
-        num = int(ceil((self.Eg+self.DF_max) / self.DF_dis))
-        Fcs = np.linspace(0, self.Eg+self.DF_max, num=num)
-        Fvs = np.linspace(-self.DF_max, self.Eg, num=num)
+    def _calc_N_P(self):
+        num = int(ceil((self._Eg + self._DF_max) / self._DF_dis))
+        Fcs = np.linspace(-self.DF_max, self.Eg + self.DF_max, num=num)
+        Fvs = np.linspace(-self.DF_max, self.Eg + self.DF_max, num=num)
 
         beta = 1/(k*self.T)
         N = np.zeros(num)
@@ -167,6 +348,11 @@ class Bulk(ActiveMaterial):
         #P = self.Nv * np.exp(beta*(-Fvs))
 
         # when Fc = Fv = Fref, n=n0, p=p0
+        ref_ni = np.argmin(np.abs(N-P)) # only works when Fcs and Fvs arrays are the same
+        self._ni = N[ref_ni] # check this
+
+        self.calc_n0_p0()
+
         nprime = N-self.n0
         pprime = P-self.p0
 
@@ -219,12 +405,12 @@ class Bulk(ActiveMaterial):
         Fc = Fc[:index]
         Fv = Fv[:index]
 
-        self.N = NN
-        self.P = PP
-        self.DF = DF
+        self._N = NN
+        self._P = PP
+        self._DF = DF
 
-        self.Fc = Fc
-        self.Fv = Fv
+        self._Fc = Fc
+        self._Fv = Fv
 
         #import matplotlib.pyplot as plt
         #plt.rcParams.update({'font.size':20})
@@ -236,7 +422,7 @@ class Bulk(ActiveMaterial):
         #plt.ylabel(r'N, P (cm$^{-3}$)')
         #plt.show()
 
-    def calc_DOSjoint(self):
+    def _calc_DOSjoint(self):
         args = hbar*self.omega - self.Eg
         arg = np.array([x if x>=0 else 0 for x in args]) # test for negatives
         rho = (1 / (2*pi**2)) * (2*self.mr/(hbar**2))**(1.5) * np.sqrt(arg)
@@ -245,20 +431,21 @@ class Bulk(ActiveMaterial):
         rho = 4*rho # factor of 4 for spin degeneracy? Exciton effects?
         ###############################
 
-        self.rho = rho
+        self._rho = rho
 
-    def calc_E1(self):
+    def _calc_E1(self):
         E1 = -1 * (hbar*self.omega - self.Eg) * self.mr / self.mh
-        self.E1 = E1
+        self._E1 = E1
 
-    def calc_E2(self):
+    def _calc_E2(self):
         E2 = self.Eg + (hbar*self.omega - self.Eg) * self.mr / self.me
-        self.E2 = E2
-
+        self._E2 = E2
 
 class QuantumWell(ActiveMaterial):
-    def __init__(self, omega, DF_max, DF_dis, T, n, mw, mw_lh, mw_hh, Ep, M,
-                 Egw, Na, Nd, Lz, Egb, mb, mb_lh, mb_hh, delEc, A, C):
+    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, mw, mw_lh, mw_hh, Ep, M,
+                 Egw, Lz, Egb, mb, mb_lh, mb_hh, delEc, A, C):
+
+        super(QuantumWell, self).__init__(Na, Nd, T)
         # Required Material Data
         # MAKE SURE ALL VALUES ARE SI
 
@@ -799,7 +986,7 @@ class QuantumWell(ActiveMaterial):
         self.E2_hh = E2_hh
         self.E2_lh = E2_lh
 
-if __name__ == "__main__":
+def test_QW():
     n = 3.5
     Egw = 0.755*q
     Ep = 25.7 * q
@@ -810,7 +997,7 @@ if __name__ == "__main__":
     mw = 0.041*m0
     mw_lh = 0.0503*m0
     mw_hh = 0.46*m0
-    
+
     mb = 0.065*m0
     mb_lh = 0.087*m0
     mb_hh = 0.46*m0
@@ -858,3 +1045,43 @@ if __name__ == "__main__":
         ax7.plot(hbar*omega/q, QW.gain_lh[:,i,2])
         ax8.plot(hbar*omega/q, QW.gain_hh[:,i,2])
     plt.show()
+
+def test_bulk():
+    import matplotlib.pyplot as plt
+
+    # GaAs Material Data
+    n = 3.62
+    Eg = 1.424 * q
+    me = 0.063 * m0
+    mh = 0.51 * m0
+    Ep =  25.7 * q
+    M = (m0/6) * Ep
+    Nd = 0.0
+    Na = 1.0e16 * 1e6
+    T = 300.0
+
+    omega = np.linspace(0.5, 3.0, num=2000) * q / hbar
+    DF_max = 2.0 * q
+    DF_dis = DF_max / 1000
+
+    active_mat = Bulk(omega, DF_max, DF_dis, Na, Nd, T, n, me, mh, M, Eg)
+    active_mat.build()
+
+    print active_mat.correct_build
+    print active_mat.Nc / 1e6
+    print active_mat.Nv / 1e6
+
+    f1 = plt.figure()
+    ax1 = f1.add_subplot(111)
+    for i in range(active_mat.DF.size):
+        ax1.plot(2*pi*c/omega*1e6, active_mat.gain[:,i])
+
+    f2 = plt.figure()
+    ax2 = f2.add_subplot(111)
+    ax2.semilogy(active_mat.DF / q, active_mat.N/1e6)
+    ax2.semilogy(active_mat.DF / q, active_mat.P/1e6)
+
+    plt.show()
+
+if __name__ == "__main__":
+    test_bulk()
