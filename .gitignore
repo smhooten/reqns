@@ -1,6 +1,7 @@
 #Python ignores
 *.pyc
 *.p
+trash.py
 
 #misc files
 *.h5

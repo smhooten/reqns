@@ -3,8 +3,8 @@
 Provides class ActiveMaterial and subclasses Bulk and QuantumWell.
 
 Bulk and QuantumWell classes can be used to calculate carrier
-concentrations and material gain spectra. These are indexed by
-input vector of Fermi-level differences.
+concentrations and material gain spectra. These are indexed by quasi-Fermi level
+differences (applied voltage).
 """
 
 from math import pi, ceil
@@ -17,7 +17,7 @@ import misc
 
 __author__ = "Sean Hooten"
 __license__ = "BSD-2-Clause"
-__version__ = "0.1"
+__version__ = "0.2"
 __maintainer__ = "Sean Hooten"
 __status__ = "development"
 
@@ -67,6 +67,14 @@ class ActiveMaterial(object):
     def ni(self):
         pass
 
+    @property
+    def n0(self):
+        return self._n0
+
+    @property
+    def p0(self):
+        return self._p0
+
     def fermi_dirac_function(self, E, F):
         kT = k*self.T
         f = 1 / (1 + np.exp( (E - F) / kT ))
@@ -107,26 +115,19 @@ class Bulk(ActiveMaterial):
         include support for light and heavy hole bands
     """
 
-    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, me, mh, M, Eg,
-                 Nc=None, Nv=None):
+    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, me, mh, M, Eg):
         super(Bulk, self).__init__(Na, Nd, T)
         # Required Material Data
         self._n = n
-        self._me = me
-        self._mh = mh
-        self._mr = 1 / (1/self.me + 1/self.mh)
         self._M = M
         self._Eg = Eg
 
-        if Nc is None:
-            self._Nc = 2 * (2 * pi * me * k *self.T / h**2)**(1.5)
-        else:
-            self._Nc = Nc
+        self._me = me
+        self._mh = mh
+        self._mr = me * mh / (me + mh)
 
-        if Nv is None:
-            self._Nv = 2 * (2 * pi * mh * k * self.T / h**2)**(1.5)
-        else:
-            self._Nv = Nv
+        self._Nc = 2 * (2 * pi * me * k *self.T / h**2)**(1.5)
+        self._Nv = 2 * (2 * pi * mh * k * self.T / h**2)**(1.5)
 
         # Required User Inputs
         self._DF_max = DF_max # assume minimum 0, max defined by source
@@ -160,30 +161,6 @@ class Bulk(ActiveMaterial):
         self._correct_build = False
 
     @property
-    def me(self):
-        return self._me
-
-    @me.setter
-    def me(self, val):
-        self._me = val
-        self._mr = 1 / (1/self._me + 1/self._mh)
-        self._correct_build = False
-
-    @property
-    def mh(self):
-        return self._mh
-
-    @mh.setter
-    def mh(self, val):
-        self._mh = val
-        self._mr = 1 / (1/self._me + 1/self._mh)
-        self._correct_build = False
-
-    @property
-    def mr(self):
-        return self._mr
-
-    @property
     def M(self):
         return self._M
 
@@ -202,22 +179,34 @@ class Bulk(ActiveMaterial):
         self._correct_build = False
 
     @property
+    def me(self):
+        return self._me
+
+    @me.setter
+    def me(self, val):
+        self._me = val
+        self._correct_build = False
+
+    @property
+    def mh(self):
+        return self._mh
+
+    @mh.setter
+    def mh(self, val):
+        self._mh = val
+        self._correct_build = False
+
+    @property
+    def mr(self):
+        return self._mr
+
+    @property
     def Nc(self):
         return self._Nc
-
-    @Nc.setter
-    def Nc(self, val):
-        self._Nc = val
-        self._correct_build = False
 
     @property
     def Nv(self):
         return self._Nv
-
-    @Nv.setter
-    def Nv(self, val):
-        self._Nv = val
-        self._correct_build = False
 
     @property
     def omega(self):
@@ -253,14 +242,6 @@ class Bulk(ActiveMaterial):
     @property
     def ni(self):
         return self._ni
-
-    @property
-    def n0(self):
-        return self._n0
-
-    @property
-    def p0(self):
-        return self._p0
 
     @property
     def Fc(self):
@@ -302,7 +283,11 @@ class Bulk(ActiveMaterial):
     def correct_build(self):
         return self._correct_build
 
-    def build(self):
+    def build(self, broaden_gain = False, tau_m = 0.1e-12):
+        self._mr = self.me * self.mh / (self.me + self.mh)
+        self._Nc = 2 * (2 * pi * self.me * k * self.T / h**2)**(1.5)
+        self._Nv = 2 * (2 * pi * self.mh * k * self.T / h**2)**(1.5)
+
         self._calc_N_P()
         self._calc_DOSjoint()
         self._calc_E1()
@@ -317,6 +302,13 @@ class Bulk(ActiveMaterial):
 
         self._fg = fg
         self._gain = gain
+
+        if broaden_gain:
+            gain_broadened = np.zeros((self.omega.size, self.DF.size))
+            for i in range(self.DF.size):
+                gain_broadened[:,i] = \
+                    misc.lineshape_broadening(self._omega, self._gain[:,i], tau_m)
+            self._gain_broadened = gain_broadened
 
         self._correct_build = True
 
@@ -442,104 +434,343 @@ class Bulk(ActiveMaterial):
         self._E2 = E2
 
 class QuantumWell(ActiveMaterial):
-    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, mw, mw_lh, mw_hh, Ep, M,
-                 Egw, Lz, Egb, mb, mb_lh, mb_hh, delEc, A, C):
+    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, M, Egw, Lz, mw,
+                 mw_lh, mw_hh, Egb = False, mb = False,
+                 mb_lh = False, mb_hh = False, delEc = False):
 
         super(QuantumWell, self).__init__(Na, Nd, T)
         # Required Material Data
         # MAKE SURE ALL VALUES ARE SI
 
-        self.n = n
-        self.Ep = Ep
-        self.M = M
+        self._n = n
+        self._M = M
+        self._Egw = Egw # quantum well bandgap
+        self._Lz = Lz # quantum well depth
 
-        self.Na = Na
-        self.Nd = Nd
+        self._mw = mw
+        self._mw_hh = mw_hh
+        self._mw_lh = mw_lh
 
-        self.Egw = Egw # quantum well bandgap
-        self.Egb = Egb # barrier bandgap
-        self.Lz = Lz # quantum well depth
-        self.mw = mw
-        self.mw_hh = mw_hh
-        self.mw_lh = mw_lh
-        self.mb = mb
-        self.mb_hh = mb_hh
-        self.mb_lh = mb_lh
+        self._mr_hh = mw_hh*mw/(mw_hh + mw)
+        self._mr_lh = mw_lh*mw/(mw_lh + mw)
 
-        self.delEc = delEc
+        self._Nc = mw * k * T / (pi * hbar**2 * Lz)
+        self._Nv_hh = mw_hh * k * T / (pi * hbar**2 * Lz)
+        self._Nv_lh = mw_lh * k * T / (pi * hbar**2 * Lz)
 
-        self.mr_hh = mw_hh*mw/(mw_hh + mw)
-        self.mr_lh = mw_lh*mw/(mw_lh + mw)
+        # Barrier Material Data (Optional)
+        self._finite_well = False
+        self._Egb = Egb
+        self._mb = mb
+        self._mb_lh = mb_lh
+        self._mb_hh = mb_hh
+        self._delEc = delEc
 
-        self.Nc = mw * k * T / (pi * hbar**2 * Lz)
-        self.Nv_hh = mw_hh * k * T / (pi * hbar**2 * Lz)
-        self.Nv_lh = mw_lh * k * T / (pi * hbar**2 * Lz)
-
-        self.A = A
-        self.C = C
-
-        self.interface_recombination_velocity = None
+        #self.interface_recombination_velocity = None
 
         # Required User Inputs
-        self.DF_max = DF_max # assume minimum 0, max defined by source
-        self.T = T # material data currently only valid for T = 300K
-        self.omega = omega #must choose sufficiently discretized and large
-        self.DF_dis = DF_dis # (roughly) discretization of DF points
+        self._DF_max = DF_max # assume minimum 0, max defined by source
+        self._omega = omega #must choose sufficiently discretized and large
+        self._DF_dis = DF_dis # (roughly) discretization of DF points
 
         # To be calculated with self.build()
-        self.ni = None
-        self.DF = None
-        self.n0 = None
-        self.p0 = None
-        self.Fc = None
-        self.Fv = None
+        self._Ew_e = None
+        self._Ew_lh = None
+        self._Ew_hh = None
 
-        self.rho_lh = None
-        self.rho_hh = None
-        self.gain = None
-        self.gain_broadened = None
-        self.N = None
-        self.P = None
+        self._DF = None
+        self._ni = None
+        self._n0 = None
+        self._p0 = None
+        self._Fc = None
+        self._Fv = None
+        self._N = None
+        self._P = None
+        self._rho_lh = None
+        self._rho_hh = None
 
-        self.E1_lh = None
-        self.E2_lh = None
+        self._E1_lh = None
+        self._E2_lh = None
+        self._E1_hh = None
+        self._E2_hh = None
 
-        self.E1_hh = None
-        self.E2_hh = None
+        self._fg_hh = None
+        self._fg_lh = None
+        self._gain = None
+        self._gain_lh = None
+        self._gain_hh = None
+        self._gain_broadened = None
 
-        self.fg_hh = None
-        self.fg_lh = None
+        self._correct_build = False
 
-        self.Ew_e = None
-        self.Ew_lh = None
-        self.Ew_hh = None
+    @property
+    def n(self):
+        return self._n
 
-    def build(self):
-        self.calc_eigen_energies_finite()
-        self.calc_N_P()
-        self.calc_DOSjoint()
-        self.calc_E1()
-        self.calc_E2()
+    @n.setter
+    def n(self, val):
+        self._n = val
+        self._correct_build = False
 
-        fe_lh = np.zeros((self.omega.size, self.DF.size, self.Ew_e.size))
+    @property
+    def M(self):
+        return self._M
+
+    @M.setter
+    def M(self, val):
+        self._M = val
+        self._correct_build = False
+
+    @property
+    def Egw(self):
+        return self._Egw
+
+    @Egw.setter
+    def Egw(self, val):
+        self._Egw = val
+        self._correct_build = False
+
+    @property
+    def Lz(self):
+        return self._Lz
+
+    @Lz.setter
+    def Lz(self, val):
+        self._Lz = val
+        self._correct_build = False
+
+    @property
+    def mw(self):
+        return self._mw
+
+    @mw.setter
+    def mw(self, val):
+        self._mw = val
+        self._correct_build = False
+
+    @property
+    def mw_hh(self):
+        return self._mw_hh
+
+    @mw_hh.setter
+    def mw_hh(self, val):
+        self._mw_hh = val
+        self._correct_build = False
+
+    @property
+    def mw_lh(self):
+        return self._mw_lh
+
+    @mw_lh.setter
+    def mw_lh(self, val):
+        self._mw_lh = val
+        self._correct_build = False
+
+    @property
+    def Egb(self):
+        return self._Egb
+
+    @Egb.setter
+    def Egb(self, val):
+        self._Egb = val
+        self._correct_build = False
+
+    @property
+    def mb(self):
+        return self._mb
+
+    @mb.setter
+    def mb(self, val):
+        self._mb = val
+        self._correct_build = False
+
+    @property
+    def mb_lh(self):
+        return self._mb_lh
+
+    @mb_lh.setter
+    def mb_lh(self, val):
+        self._mb_lh = val
+        self._correct_build = False
+
+    @property
+    def mb_hh(self):
+        return self._mb_hh
+
+    @mb_hh.setter
+    def mb_hh(self, val):
+        self._mb_hh = val
+        self._correct_build = False
+
+    @property
+    def delEc(self):
+        return self._delEc
+
+    @delEc.setter
+    def delEc(self, val):
+        self._delEc = val
+        self._correct_build = False
+
+    @property
+    def mr_lh(self):
+        return self._mr_lh
+
+    @property
+    def mr_hh(self):
+        return self._mr_hh
+
+    @property
+    def Nc(self):
+        return self._Nc
+
+    @property
+    def Nv_hh(self):
+        return self._Nv_hh
+
+    @property
+    def Nv_lh(self):
+        return self._Nv_lh
+
+    @property
+    def omega(self):
+        return self._omega
+
+    @omega.setter
+    def omega(self, val):
+        self._omega = val
+        self._correct_build = False
+
+    @property
+    def DF_max(self):
+        return self._DF_max
+
+    @DF_max.setter
+    def DF_max(self, val):
+        self._DF_max = val
+        self._correct_build = False
+
+    @property
+    def DF_dis(self):
+        return self._DF_dis
+
+    @DF_dis.setter
+    def DF_dis(self, val):
+        self._DF_dis = val
+        self._correct_build = False
+
+    @property
+    def Ew_e(self):
+        return self._Ew_e
+
+    @property
+    def Ew_lh(self):
+        return self._Ew_lh
+
+    @property
+    def Ew_hh(self):
+        return self._Ew_hh
+
+    @property
+    def DF(self):
+        return self._DF
+
+    @property
+    def ni(self):
+        return self._ni
+
+    @property
+    def Fc(self):
+        return self._Fc
+
+    @property
+    def Fv(self):
+        return self._Fv
+
+    @property
+    def N(self):
+        return self._N
+
+    @property
+    def P(self):
+        return self._P
+
+    @property
+    def rho_lh(self):
+        return self._rho_lh
+
+    @property
+    def rho_hh(self):
+        return self._rho_hh
+
+    @property
+    def E1_lh(self):
+        return self._E1_lh
+
+    @property
+    def E2_lh(self):
+        return self._E2_lh
+
+    @property
+    def E1_hh(self):
+        return self._E1_hh
+
+    @property
+    def E2_hh(self):
+        return self._E2_hh
+
+    @property
+    def fg_lh(self):
+        return self._fg_lh
+
+    @property
+    def fg_hh(self):
+        return self._fg_hh
+
+    @property
+    def gain_lh(self):
+        return self._gain_lh
+
+    @property
+    def gain_hh(self):
+        return self._gain_hh
+
+    @property
+    def gain(self):
+        return self._gain
+
+    @property
+    def gain_broadened(self):
+        return self._gain_broadened
+
+    @property
+    def correct_build(self):
+        return self._correct_build
+
+    def build(self, broaden_gain = False, tau_m = 0.1e-12):
+        self._mr_hh = 1 / (1/self._mw + 1/self._mw_hh)
+        self._mr_lh = 1 / (1/self._mw + 1/self._mw_lh)
+
+        self._Nc = self.mw * k * self.T / (pi * hbar**2 * self.Lz)
+        self._Nv_lh = self.mw_lh * k * self.T / (pi * hbar**2 * self.Lz)
+        self._Nv_hh = self.mw_hh * k * self.T / (pi * hbar**2 * self.Lz)
+
+        self.check_barrier_params()
+        self.calc_eigen_energies()
+        self._calc_N_P()
+        self._calc_DOSjoint()
+        self._calc_E1()
+        self._calc_E2()
+
         fg_lh = np.zeros((self.omega.size, self.DF.size, self.Ew_e.size))
-        fe_hh = np.zeros((self.omega.size, self.DF.size, self.Ew_e.size))
         fg_hh = np.zeros((self.omega.size, self.DF.size, self.Ew_e.size))
-
-        gain_broadened = np.zeros((self.omega.size, self.DF.size))
 
         for i in range(self.DF.size):
             for j in range(self.Ew_e.size):
                 for n in range(self.omega.size):
                     fg_lh[n, i, j] = self.fermi_inversion_function(self.E1_lh[n,j], self.Fv[i],
-                                                               self.E2_lh[n,j], self.Fc[i], self.T)
+                                                               self.E2_lh[n,j], self.Fc[i])
                     fg_hh[n, i, j] = self.fermi_inversion_function(self.E1_hh[n,j], self.Fv[i],
-                                                               self.E2_hh[n,j], self.Fc[i], self.T)
-                    fe_lh[n, i, j] = self.fermi_emission_factor(self.E1_lh[n,j],self.Fv[i],
-                                                                self.E2_lh[n,j], self.Fc[i], self.T)
-                    fe_hh[n, i, j] = self.fermi_emission_factor(self.E1_hh[n,j],self.Fv[i],
-                                                               self.E2_hh[n,j], self.Fc[i], self.T)
-
+                                                               self.E2_hh[n,j], self.Fc[i])
 
         #import matplotlib.pyplot as plt
         #plt.rcParams.update({'font.size':20})
@@ -553,297 +784,78 @@ class QuantumWell(ActiveMaterial):
         #plt.ylabel(r'$F_c, F_v$')
         #plt.show()
 
-        self.fg_lh = fg_lh
-        self.fg_hh = fg_hh
-        self.fe_lh = fe_lh
-        self.fe_hh = fe_hh
+        self._fg_lh = fg_lh
+        self._fg_hh = fg_hh
 
-        self.calc_gain2()
+        self._calc_gain2()
 
-        #for i in range(self.DF.size):
-        #    gain_broadened[:,i] = misc.lineshape_broadening(self.omega,self.gain[:,i],0.1e-12)
+        if broaden_gain:
+            gain_broadened = np.zeros((self.omega.size, self.DF.size, 3))
+            for i in range(self.DF.size):
+                for j in range(3):
+                    gain_broadened[:,i,j] = \
+                        misc.lineshape_broadening(self._omega, self._gain[:,i,j], tau_m)
+            self._gain_broadened = gain_broadened
 
-        #self.gain_broadened = gain_broadened
+        self._correct_build = True
 
-    def update(self, omega, DF_max, DF_dis, T):
-        # Material data can be updated simply by setting the material values
-        self.DF_max = DF_max
-        self.DF_dis = DF_dis
-        self.T = T
-        self.omega = omega
-
-        self.build()
-
-    def calc_gain(self):
-        rho_lh = self.rho_lh
-        rho_hh = self.rho_hh
-
-        fg_lh = self.fg_lh
-        fg_hh = self.fg_hh
-
-        C0 = pi*q**2 / (self.n * c * eps0 * m0**2 * self.omega)
-
-        gain_lh = np.zeros((self.omega.size, self.DF.size))
-        gain_hh = np.zeros((self.omega.size, self.DF.size))
-
-        gain_lh_pol = np.zeros((self.omega.size, self.DF.size, 3))
-        gain_hh_pol = np.zeros((self.omega.size, self.DF.size, 3))
-
-        # note that here we assume the subband selection rule holds, i.e.
-        # |I_en^hm| = delta_func(n,m)
-        # This can cause inaccuracy issues because it's a simplification of valence band
-        # mixing
-
-        for n in range(self.DF.size):
-            for i in range(self.omega.size):
-                if self.Ew_e.size>1:
-                    for j in range(self.Ew_e.size):
-                        if hbar*self.omega[i] >= self.Ew_e[j] + self.Ew_lh[j] + self.Egw:
-                            gain_lh[i,n] += C0[i] * self.M * rho_lh * fg_lh[i,n,j]
-
-
-                        if hbar*self.omega[i] >= self.Ew_e[j] + self.Ew_hh[j] + self.Egw:
-                            gain_hh[i,n] += C0[i] * self.M * rho_hh * fg_hh[i,n,j]
-                else:
-                    if hbar*self.omega[i] >= self.Ew_e[0] + self.Ew_lh[0] + self.Egw:
-                        gain_lh[i,n] += C0[i] * self.M * rho_lh * fg_lh[i,n,0]
-
-                    if hbar*self.omega[i] >= self.Ew_e[0] + self.Ew_hh[0] + self.Egw:
-                        gain_hh[i,n] += C0[i] * self.M * rho_hh * fg_hh[i,n,0]
-
-        # Are these supposed to be normalized?
-        gain_lh_pol[:,:,0] = gain_lh * (1.0/2.0)
-        gain_lh_pol[:,:,1] = gain_lh * (1.0/2.0)
-        gain_lh_pol[:,:,2] = gain_lh * 2.0
-
-        gain_hh_pol[:,:,0] = gain_hh * (3.0/2.0)
-        gain_hh_pol[:,:,1] = gain_hh * (3.0/2.0)
-        gain_hh_pol[:,:,2] = gain_hh * 0.0
-
-        self.gain_lh = gain_lh_pol
-        self.gain_hh = gain_hh_pol
-        self.gain = 3*gain_lh + 3*gain_hh # times 3 for contributions of all polarizations?
-
-    def calc_gain2(self):
-        rho_lh = self.rho_lh
-        rho_hh = self.rho_hh
-
-        fg_lh = self.fg_lh
-        fg_hh = self.fg_hh
-
-        C0 = pi*q**2 / (self.n * c * eps0 * m0**2 * self.omega)
-
-        gain_lh = np.zeros((self.omega.size, self.DF.size))
-        gain_hh = np.zeros((self.omega.size, self.DF.size))
-
-        gain_lh_pol = np.zeros((self.omega.size, self.DF.size, 3))
-        gain_hh_pol = np.zeros((self.omega.size, self.DF.size, 3))
-
-        # note that here we assume the subband selection rule holds, i.e.
-        # |I_en^hm| = delta_func(n,m)
-        # This can cause inaccuracy issues because it's a simplification of valence band
-        # mixing
-
-        for n in range(self.DF.size):
-            for i in range(self.omega.size):
-                if self.Ew_e.size>1:
-                    for j in range(self.Ew_e.size):
-
-                        if hbar*self.omega[i] >= self.Ew_e[j] + self.Ew_lh[j] + self.Egw:
-                            cos2 = (self.Ew_e[j]+self.Ew_lh[j])/(hbar*self.omega[i]-self.Egw)
-                            gain_lh_pol[i,n,0] += C0[i] * rho_lh * fg_lh[i,n,j] * self.M * (5.0/4.0-3.0/4.0*cos2)
-                            gain_lh_pol[i,n,1] += C0[i] * rho_lh * fg_lh[i,n,j] * self.M * (5.0/4.0-3.0/4.0*cos2)
-                            gain_lh_pol[i,n,2] += C0[i] * rho_lh * fg_lh[i,n,j] * self.M * (1.0/2.0+3.0/2.0*cos2)
-
-                        if hbar*self.omega[i] >= self.Ew_e[j] + self.Ew_hh[j] + self.Egw:
-                            cos2 = (self.Ew_e[j]+self.Ew_hh[j])/(hbar*self.omega[i]-self.Egw)
-                            gain_hh_pol[i,n,0] += C0[i] * rho_hh * fg_hh[i,n,j] * self.M * 3.0/4.0 * (1+cos2)
-                            gain_hh_pol[i,n,1] += C0[i] * rho_hh * fg_hh[i,n,j] * self.M * 3.0/4.0 * (1+cos2)
-                            gain_hh_pol[i,n,2] += C0[i] * rho_hh * fg_hh[i,n,j] * self.M * 3.0/2.0 * (1-cos2)
-                else:
-
-                    if hbar*self.omega[i] >= self.Ew_e[0] + self.Ew_lh[0] + self.Egw:
-                        cos2 = (self.Ew_e[0]+self.Ew_lh[0])/(hbar*self.omega[i]-self.Egw)
-                        gain_lh_pol[i,n,0] += C0[i] * rho_lh * fg_lh[i,n,0]  * self.M * (5.0/4.0-3.0/4.0*cos2)
-                        gain_lh_pol[i,n,1] += C0[i] * rho_lh * fg_lh[i,n,0]  * self.M * (5.0/4.0-3.0/4.0*cos2)
-                        gain_lh_pol[i,n,2] += C0[i] * rho_lh * fg_lh[i,n,0]  * self.M * (1.0/2.0+3.0/2.0*cos2)
-
-                    if hbar*self.omega[i] >= self.Ew_e[0] + self.Ew_hh[0] + self.Egw:
-                        cos2 = (self.Ew_e[0]+self.Ew_hh[0])/(hbar*self.omega[i]-self.Egw)
-                        gain_hh_pol[i,n,0] += C0[i] * rho_hh * fg_hh[i,n,0] * self.M * 3.0/4.0 * (1+cos2)
-                        gain_hh_pol[i,n,1] += C0[i] * rho_hh * fg_hh[i,n,0] * self.M * 3.0/4.0 * (1+cos2)
-                        gain_hh_pol[i,n,2] += C0[i] * rho_hh * fg_hh[i,n,0] * self.M * 3.0/2.0 * (1-cos2)
-
-        self.gain_lh = gain_lh_pol
-        self.gain_hh = gain_hh_pol
-        self.gain = np.sum(gain_lh_pol, axis=2) + np.sum(gain_hh_pol, axis=2)
-
-    def calc_N_P(self):
-        num = int(ceil((self.Egw+self.Ew_e[-1]+self.Ew_lh[-1]+2*self.DF_max) / self.DF_dis))
-        Fcs = np.linspace(-self.Ew_lh[-1]-self.DF_max, self.Egw+self.Ew_e[-1]+self.DF_max, num=num)
-        Fvs = np.linspace(-self.Ew_lh[-1]-self.DF_max, self.Egw+self.Ew_e[-1]+self.DF_max, num=num)
-
-        beta = 1/(k*self.T)
-        N = np.zeros(num)
-        P = np.zeros(num)
-
-        for i in range(self.Ew_e.size):
-            N += self.Nc * misc.fermi_dirac_integral(k=0,phi=beta*(Fcs-self.Ew_e[i]-self.Egw))
-
-            P += self.Nv_lh * misc.fermi_dirac_integral(k=0,phi=beta*(-Fvs-self.Ew_lh[i]))
-            P += self.Nv_hh * misc.fermi_dirac_integral(k=0,phi=beta*(-Fvs-self.Ew_hh[i]))
-
-        ########
-        #CHECK THIS!
-        ########
-
-
-        #import matplotlib.pyplot as plt
-        #plt.rcParams.update({'font.size':20})
-        #f = plt.figure()
-        #ax = f.add_subplot(111)
-        #ax.semilogy(Fcs/q, N/1e6, '-o')
-        #ax.semilogy(Fvs/q, P/1e6, '-o')
-        ##plt.xlabel(r'$\Delta F$ (V)')
-        #plt.ylabel(r'N, P (cm$^{-3}$)')
-        #plt.show()
-        ## might need to check this for density of states of each subband
-
-
-        # when Fc = Fv = Fref, n=n0, p=p0
-        #import matplotlib.pyplot as plt
-        #f = plt.figure()
-        #ax = f.add_subplot(111)
-        #ax.semilogy(Fcs/q, N)
-        #ax.semilogy(Fvs/q, P)
-        #ax.semilogy(Fcs/q, np.abs(N-P))
-        #plt.show()
-
-        ref_ni = np.argmin(np.abs(N-P)) # only works when Fcs and Fvs arrays are the same
-        self.ni = N[ref_ni] # check this
-
-        self.calc_n0_p0()
-
-        nprime = N-self.n0
-        pprime = P-self.p0
-
-        refN = np.argmin(np.abs(nprime))
-        refP = np.argmin(np.abs(pprime))
-
-        FrefN = Fcs[refN]
-        FrefP = Fvs[refP]
-        # might need to check whether these are close enough
-
-        count = np.min([num-refN, refP])
-        DF = np.zeros(count)
-        NN = np.zeros(count)
-        PP = np.zeros(count)
-        Fc = np.zeros(count)
-        Fv = np.zeros(count)
-
-        if self.p0 >= self.n0:
-            for i in range(count):
-                Fc[i] = Fcs[refN+i]
-                Fv[i] = np.interp(0.0, nprime[refN+i]-pprime, Fvs)
-                DF[i] = Fc[i] - Fv[i]
-                NN[i] = N[refN+i]
-                PP[i] = np.interp(Fv[i], Fvs, P)
-
+    def check_barrier_params(self):
+        barrier_params = [self.Egb, self.mb, self.mb_lh, self.mb_hh,
+                          self.delEc]
+        if all(barrier_params):
+            self._finite_well = True
+            print "Barrier parameters set, will solve for finite QW barriers"
+        elif any(barrier_params):
+            print "Not all barrier parameters are set, will assume infinite QW barriers"
+            self._finite_well = False
         else:
-            for i in range(count):
-                Fv[i] = Fvs[refP-i]
-                Fc[i] = np.interp(0.0,nprime-pprime[refP-i], Fcs)
-                DF[i] = Fc[i] - Fv[i]
-                PP[i] = P[refP-i]
-                NN[i] = np.interp(Fc[i], Fcs, N)
-
-        index = np.argmin(np.abs(DF-self.DF_max))
-        DF = DF[:index]
-        NN = NN[:index]
-        PP = PP[:index]
-
-        Fc = Fc[:index]
-        Fv = Fv[:index]
-
-        self.N = NN
-        self.P = PP
-        self.DF = DF
-
-        self.Fc = Fc
-        self.Fv = Fv
-
-        #if RANK == 0:
-        #import matplotlib.pyplot as plt
-        #plt.rcParams.update({'font.size':20})
-        #f = plt.figure()
-        #ax = f.add_subplot(111)
-        #ax.semilogy(DF/q, NN/1e6, '-o')
-        #ax.semilogy(DF/q, PP/1e6, '-o')
-        #plt.xlabel(r'$\Delta F$ (V)')
-        #plt.ylabel(r'N, P (cm$^{-3}$)')
-        #plt.show()
-
-        #import matplotlib.pyplot as plt
-        #plt.rcParams.update({'font.size':20})
-        #f = plt.figure()
-        #ax = f.add_subplot(111)
-        #ax.semilogy(Fc/q, NN/1e6, '-o')
-        #ax.semilogy(Fv/q, PP/1e6, '-o')
-        #plt.xlabel(r'$\Delta F$ (V)')
-        #plt.ylabel(r'N, P (cm$^{-3}$)')
-        #plt.show()
-
-        #import matplotlib.pyplot as plt
-        #plt.rcParams.update({'font.size':20})
-        #f = plt.figure()
-        #ax = f.add_subplot(111)
-        #ax.plot(DF/q, Fc/q, '-o')
-        #ax.plot(DF/q, Fv/q, '-o')
-        #plt.xlabel(r'$\Delta F$ (V)')
-        #plt.ylabel(r'$F_c, F_v$')
-        #plt.show()
+            print "Barrier parameters not set, will assume infinite QW barriers"
+            self._finite_well = False
 
     def calc_eigen_energies(self):
         #Vo_e = (self.Egb - self.Egw) * delEc / q # this is a voltage
         #Vo_h = (self.Egb - self.Egw) / q  - Vo_e
 
-        max_energy = hbar*self.omega[-1]
+        if self._finite_well:
+            self.calc_eigen_energies_finite()
+        else:
+            max_energy = hbar*self.omega[-1]
 
-        Ew_e = []
-        Ew_lh = []
-        Ew_hh = []
+            Ew_e = []
+            Ew_lh = []
+            Ew_hh = []
 
-        difference = 0
-        nn = 1
+            difference = 0
+            nn = 1
 
-        # need to find all quantum well energy levels
-        # to-do: truncate at conduction band offset
-        while max_energy - difference >= 0:
-        #Currently infinite barrier energies considered
-            Ee =  nn**2 * hbar**2 * pi**2 / (2 * self.mw * self.Lz**2)
-            Ehh = nn**2 * hbar**2 * pi**2 / (2 * self.mw_hh * self.Lz**2)
-            Elh = nn**2 * hbar**2 * pi**2 / (2 * self.mw_lh * self.Lz**2)
+            # need to find all quantum well energy levels
+            # to-do: truncate at conduction band offset
+            while max_energy - difference >= 0:
+            #Currently infinite barrier energies considered
+                Ee =  nn**2 * hbar**2 * pi**2 / (2 * self.mw * self.Lz**2)
+                Ehh = nn**2 * hbar**2 * pi**2 / (2 * self.mw_hh * self.Lz**2)
+                Elh = nn**2 * hbar**2 * pi**2 / (2 * self.mw_lh * self.Lz**2)
 
-            Ew_e.append(Ee)
-            Ew_lh.append(Elh)
-            Ew_hh.append(Ehh)
+                Ew_e.append(Ee)
+                Ew_lh.append(Elh)
+                Ew_hh.append(Ehh)
 
-            difference_lh = Ee + self.Egw + Elh
-            difference_hh = Ee + self.Egw + Ehh
-            difference = np.min([difference_lh, difference_hh])
+                difference_lh = Ee + self.Egw + Elh
+                difference_hh = Ee + self.Egw + Ehh
+                difference = np.min([difference_lh, difference_hh])
 
-            nn += 1
+                nn += 1
 
-        # note that all quantized energies are positive, need to adjust based on
-        # coordinate system
+            # note that all quantized energies are positive, need to adjust based on
+            # coordinate system
 
-        self.Ew_e = np.array(Ew_e)
-        self.Ew_lh = np.array(Ew_lh)
-        self.Ew_hh = np.array(Ew_hh)
+            self._Ew_e = np.array(Ew_e)
+            self._Ew_lh = np.array(Ew_lh)
+            self._Ew_hh = np.array(Ew_hh)
 
-        print self.Ew_e / q
-        print self.Ew_lh / q
-        print self.Ew_hh / q
+            print self.Ew_e / q
+            print self.Ew_lh / q
+            print self.Ew_hh / q
 
     def calc_eigen_energies_finite(self):
         max_energy = hbar*self.omega[-1]
@@ -925,20 +937,145 @@ class QuantumWell(ActiveMaterial):
                 Elh = 1000.0
                 Ew_lh.append(Elh) # Dummy for calculations
 
-        self.Ew_e = np.array(Ew_e)
-        self.Ew_lh = np.array(Ew_lh)
-        self.Ew_hh = np.array(Ew_hh)
+        self._Ew_e = np.array(Ew_e)
+        self._Ew_lh = np.array(Ew_lh)
+        self._Ew_hh = np.array(Ew_hh)
 
         print self.Ew_e / q
         print self.Ew_lh / q
         print self.Ew_hh / q
 
-    def calc_DOSjoint(self):
-        self.rho_hh = self.mr_hh / (pi * hbar**2 * self.Lz)
-        self.rho_lh = self.mr_lh / (pi * hbar**2 * self.Lz)
+    def _calc_N_P(self):
+        num = int(ceil((self.Egw+self.Ew_e[-1]+self.Ew_lh[-1]+2*self.DF_max) / self.DF_dis))
+        Fcs = np.linspace(-self.Ew_lh[-1]-self.DF_max, self.Egw+self.Ew_e[-1]+self.DF_max, num=num)
+        Fvs = np.linspace(-self.Ew_lh[-1]-self.DF_max, self.Egw+self.Ew_e[-1]+self.DF_max, num=num)
+
+        beta = 1/(k*self.T)
+        N = np.zeros(num)
+        P = np.zeros(num)
+
+        for i in range(self.Ew_e.size):
+            N += self.Nc * misc.fermi_dirac_integral(k=0,phi=beta*(Fcs-self.Ew_e[i]-self.Egw))
+
+            P += self.Nv_lh * misc.fermi_dirac_integral(k=0,phi=beta*(-Fvs-self.Ew_lh[i]))
+            P += self.Nv_hh * misc.fermi_dirac_integral(k=0,phi=beta*(-Fvs-self.Ew_hh[i]))
+
+        ########
+        #CHECK THIS!
+        ########
+
+
+        #import matplotlib.pyplot as plt
+        #plt.rcParams.update({'font.size':20})
+        #f = plt.figure()
+        #ax = f.add_subplot(111)
+        #ax.semilogy(Fcs/q, N/1e6, '-o')
+        #ax.semilogy(Fvs/q, P/1e6, '-o')
+        ##plt.xlabel(r'$\Delta F$ (V)')
+        #plt.ylabel(r'N, P (cm$^{-3}$)')
+        #plt.show()
+        ## might need to check this for density of states of each subband
+
+
+        # when Fc = Fv = Fref, n=n0, p=p0
+        #import matplotlib.pyplot as plt
+        #f = plt.figure()
+        #ax = f.add_subplot(111)
+        #ax.semilogy(Fcs/q, N)
+        #ax.semilogy(Fvs/q, P)
+        #ax.semilogy(Fcs/q, np.abs(N-P))
+        #plt.show()
+
+        ref_ni = np.argmin(np.abs(N-P)) # only works when Fcs and Fvs arrays are the same
+        self._ni = N[ref_ni] # check this
+
+        self.calc_n0_p0()
+
+        nprime = N-self.n0
+        pprime = P-self.p0
+
+        refN = np.argmin(np.abs(nprime))
+        refP = np.argmin(np.abs(pprime))
+
+        FrefN = Fcs[refN]
+        FrefP = Fvs[refP]
+        # might need to check whether these are close enough
+
+        count = np.min([num-refN, refP])
+        DF = np.zeros(count)
+        NN = np.zeros(count)
+        PP = np.zeros(count)
+        Fc = np.zeros(count)
+        Fv = np.zeros(count)
+
+        if self.p0 >= self.n0:
+            for i in range(count):
+                Fc[i] = Fcs[refN+i]
+                Fv[i] = np.interp(0.0, nprime[refN+i]-pprime, Fvs)
+                DF[i] = Fc[i] - Fv[i]
+                NN[i] = N[refN+i]
+                PP[i] = np.interp(Fv[i], Fvs, P)
+
+        else:
+            for i in range(count):
+                Fv[i] = Fvs[refP-i]
+                Fc[i] = np.interp(0.0,nprime-pprime[refP-i], Fcs)
+                DF[i] = Fc[i] - Fv[i]
+                PP[i] = P[refP-i]
+                NN[i] = np.interp(Fc[i], Fcs, N)
+
+        index = np.argmin(np.abs(DF-self.DF_max))
+        DF = DF[:index]
+        NN = NN[:index]
+        PP = PP[:index]
+
+        Fc = Fc[:index]
+        Fv = Fv[:index]
+
+        self._N = NN
+        self._P = PP
+        self._DF = DF
+
+        self._Fc = Fc
+        self._Fv = Fv
+
+        #if RANK == 0:
+        #import matplotlib.pyplot as plt
+        #plt.rcParams.update({'font.size':20})
+        #f = plt.figure()
+        #ax = f.add_subplot(111)
+        #ax.semilogy(DF/q, NN/1e6, '-o')
+        #ax.semilogy(DF/q, PP/1e6, '-o')
+        #plt.xlabel(r'$\Delta F$ (V)')
+        #plt.ylabel(r'N, P (cm$^{-3}$)')
+        #plt.show()
+
+        #import matplotlib.pyplot as plt
+        #plt.rcParams.update({'font.size':20})
+        #f = plt.figure()
+        #ax = f.add_subplot(111)
+        #ax.semilogy(Fc/q, NN/1e6, '-o')
+        #ax.semilogy(Fv/q, PP/1e6, '-o')
+        #plt.xlabel(r'$\Delta F$ (V)')
+        #plt.ylabel(r'N, P (cm$^{-3}$)')
+        #plt.show()
+
+        #import matplotlib.pyplot as plt
+        #plt.rcParams.update({'font.size':20})
+        #f = plt.figure()
+        #ax = f.add_subplot(111)
+        #ax.plot(DF/q, Fc/q, '-o')
+        #ax.plot(DF/q, Fv/q, '-o')
+        #plt.xlabel(r'$\Delta F$ (V)')
+        #plt.ylabel(r'$F_c, F_v$')
+        #plt.show()
+
+    def _calc_DOSjoint(self):
+        self._rho_hh = self.mr_hh / (pi * hbar**2 * self.Lz)
+        self._rho_lh = self.mr_lh / (pi * hbar**2 * self.Lz)
         # THIS IS NOT A SPECTRUM
 
-    def calc_E1(self):
+    def _calc_E1(self):
         Eg = self.Egw
 
         Ew_e = self.Ew_e
@@ -959,10 +1096,10 @@ class QuantumWell(ActiveMaterial):
             E1_lh[:,i] = -Ew_lh[i] - mr_lh / mw_lh * (hbar * self.omega - (Ew_e[i] + Eg + Ew_lh[i]))
 
         # this is an array
-        self.E1_hh = E1_hh
-        self.E1_lh = E1_lh
+        self._E1_hh = E1_hh
+        self._E1_lh = E1_lh
 
-    def calc_E2(self):
+    def _calc_E2(self):
         Eg = self.Egw
 
         Ew_e = self.Ew_e
@@ -983,41 +1120,101 @@ class QuantumWell(ActiveMaterial):
             E2_lh[:,i] = Eg + Ew_e[i] + mr_lh / mw * (hbar * self.omega - (Ew_e[i] + Eg + Ew_lh[i]))
 
         # this is an array
-        self.E2_hh = E2_hh
-        self.E2_lh = E2_lh
+        self._E2_hh = E2_hh
+        self._E2_lh = E2_lh
+
+    def _calc_gain2(self):
+        rho_lh = self.rho_lh
+        rho_hh = self.rho_hh
+
+        fg_lh = self.fg_lh
+        fg_hh = self.fg_hh
+
+        C0 = pi * q**2 / (self.n * c * eps0 * m0**2 * self.omega)
+
+        gain_lh = np.zeros((self.omega.size, self.DF.size))
+        gain_hh = np.zeros((self.omega.size, self.DF.size))
+
+        gain_lh_pol = np.zeros((self.omega.size, self.DF.size, 3))
+        gain_hh_pol = np.zeros((self.omega.size, self.DF.size, 3))
+
+        # note that here we assume the subband selection rule holds, i.e.
+        # |I_en^hm| = delta_func(n,m)
+        # This can cause inaccuracy issues because it's a simplification of valence band
+        # mixing
+
+        for n in range(self.DF.size):
+            for i in range(self.omega.size):
+                if self.Ew_e.size>1:
+                    for j in range(self.Ew_e.size):
+                        if hbar*self.omega[i] >= self.Ew_e[j] + self.Ew_lh[j] + self.Egw:
+                            cos2 = (self.Ew_e[j]+self.Ew_lh[j])/(hbar*self.omega[i]-self.Egw)
+                            coeff = C0[i] * rho_lh * fg_lh[i,n,j] * self.M
+                            gain_lh_pol[i,n,0] += coeff * (5.0/4.0-3.0/4.0*cos2)
+                            gain_lh_pol[i,n,1] += coeff * (5.0/4.0-3.0/4.0*cos2)
+                            gain_lh_pol[i,n,2] += coeff * (1.0/2.0+3.0/2.0*cos2)
+
+                        if hbar*self.omega[i] >= self.Ew_e[j] + self.Ew_hh[j] + self.Egw:
+                            cos2 = (self.Ew_e[j]+self.Ew_hh[j])/(hbar*self.omega[i]-self.Egw)
+                            coeff = C0[i] * rho_hh * fg_hh[i,n,j] * self.M
+                            gain_hh_pol[i,n,0] += coeff * 3.0/4.0 * (1+cos2)
+                            gain_hh_pol[i,n,1] += coeff * 3.0/4.0 * (1+cos2)
+                            gain_hh_pol[i,n,2] += coeff * 3.0/2.0 * (1-cos2)
+                else:
+                    if hbar*self.omega[i] >= self.Ew_e[0] + self.Ew_lh[0] + self.Egw:
+                        cos2 = (self.Ew_e[0]+self.Ew_lh[0])/(hbar*self.omega[i]-self.Egw)
+                        coeff = C0[i] * rho_lh * fg_lh[i,n,0] * self.M
+                        gain_lh_pol[i,n,0] += coeff * (5.0/4.0-3.0/4.0*cos2)
+                        gain_lh_pol[i,n,1] += coeff * (5.0/4.0-3.0/4.0*cos2)
+                        gain_lh_pol[i,n,2] += coeff * (1.0/2.0+3.0/2.0*cos2)
+
+                    if hbar*self.omega[i] >= self.Ew_e[0] + self.Ew_hh[0] + self.Egw:
+                        cos2 = (self.Ew_e[0]+self.Ew_hh[0])/(hbar*self.omega[i]-self.Egw)
+                        coeff = C0[i] * rho_hh * fg_hh[i,n,0] * self.M
+                        gain_hh_pol[i,n,0] += coeff * 3.0/4.0 * (1+cos2)
+                        gain_hh_pol[i,n,1] += coeff * 3.0/4.0 * (1+cos2)
+                        gain_hh_pol[i,n,2] += coeff * 3.0/2.0 * (1-cos2)
+
+        self._gain_lh = gain_lh_pol
+        self._gain_hh = gain_hh_pol
+        #self.gain = np.sum(gain_lh_pol, axis=2) + np.sum(gain_hh_pol, axis=2)
+        self._gain = gain_lh_pol + gain_hh_pol
 
 def test_QW():
+    import matplotlib.pyplot as plt
     n = 3.5
     Egw = 0.755*q
     Ep = 25.7 * q
     Nd = 0.0
-    Na = 1.0e16*1e6
-    Lz = 4.75e-9
+    Na = 1.0e17 * 1e6
+    Lz = 10.0e-9
     M = (m0/6)*Ep
     mw = 0.041*m0
     mw_lh = 0.0503*m0
     mw_hh = 0.46*m0
 
-    mb = 0.065*m0
-    mb_lh = 0.087*m0
-    mb_hh = 0.46*m0
+    #mb = 0.065*m0
+    #mb_lh = 0.087*m0
+    #mb_hh = 0.46*m0
 
-    Egb = 1.03*q
+    #Egb = 1.03*q
 
-    delEc = 0.4
+    #delEc = 0.4
 
-    omega = np.linspace(0.1, 3.0, num=2000)*q/hbar
-    DF_max = 2.5*q
-    DF_dis = 2.5*q/1000
-    T=77.0
+    omega = np.linspace(0.5, 2.5, num=2000)*q/hbar
+    DF_max = 1.5*q
+    DF_dis = 1.5*q/200
+    T = 300.0
 
-    QW = QuantumWell(omega, DF_max, DF_dis, T, n, mw, mw_lh, mw_hh, Ep, M, Egw,
-                     Na, Nd, Lz, Egb, mb, mb_lh, mb_hh, delEc)
+    #QW = QuantumWell(omega, DF_max, DF_dis, Na, Nd, T, n, M, Egw, Lz, mw, mw_lh, mw_hh,
+    #                 Egb=Egb, mb=mb, mb_lh=mb_lh, mb_hh=mb_hh, delEc=delEc)
 
-    QW.build()
+    QW = QuantumWell(omega, DF_max, DF_dis, Na, Nd, T, n, M, Egw, Lz, mw, mw_lh, mw_hh)
+
+    QW.build(broaden_gain = False)
     print QW.gain_lh.shape
     print QW.gain_hh.shape
-    import matplotlib.pyplot as plt
+
     f = plt.figure()
     f2 = plt.figure()
     f3 = plt.figure()
@@ -1026,6 +1223,7 @@ def test_QW():
     f6 = plt.figure()
     f7 = plt.figure()
     f8 = plt.figure()
+    f9 = plt.figure()
     ax = f.add_subplot(111)
     ax2 = f2.add_subplot(111)
     ax3 = f3.add_subplot(111)
@@ -1034,16 +1232,21 @@ def test_QW():
     ax6 = f6.add_subplot(111)
     ax7 = f7.add_subplot(111)
     ax8 = f8.add_subplot(111)
+    ax9 = f9.add_subplot(111)
 
+    ax.semilogy(QW.DF/q, QW.N / 1e6)
+    ax.semilogy(QW.DF/q, QW.P / 1e6)
     for i in range(0, QW.DF.size, 10):
-        ax.plot(hbar*omega/q, QW.gain_broadened[:,i])
-        ax2.plot(hbar*omega/q, QW.gain[:,i])
-        ax3.plot(hbar*omega/q, QW.gain_lh[:,i,0])
-        ax4.plot(hbar*omega/q, QW.gain_hh[:,i,0])
-        ax5.plot(hbar*omega/q, QW.gain_lh[:,i,1])
-        ax6.plot(hbar*omega/q, QW.gain_hh[:,i,1])
-        ax7.plot(hbar*omega/q, QW.gain_lh[:,i,2])
-        ax8.plot(hbar*omega/q, QW.gain_hh[:,i,2])
+        #ax.plot(hbar*omega/q, QW.gain_broadened[:,i,0])
+        #ax2.plot(hbar*omega/q, QW.gain_broadened[:,i,1])
+        #ax3.plot(hbar*omega/q, QW.gain_broadened[:,i,2])
+        #ax2.plot(hbar*omega/q, QW.gain[:,i])
+        ax4.plot(hbar*omega/q, QW.gain_lh[:,i,0])
+        ax5.plot(hbar*omega/q, QW.gain_hh[:,i,0])
+        ax6.plot(hbar*omega/q, QW.gain_lh[:,i,1])
+        ax7.plot(hbar*omega/q, QW.gain_hh[:,i,1])
+        ax8.plot(hbar*omega/q, QW.gain_lh[:,i,2])
+        ax9.plot(hbar*omega/q, QW.gain_hh[:,i,2])
     plt.show()
 
 def test_bulk():
@@ -1084,4 +1287,4 @@ def test_bulk():
     plt.show()
 
 if __name__ == "__main__":
-    test_bulk()
+    test_QW()

@@ -7,7 +7,7 @@ from math import pi
 
 __author__ = "Sean Hooten"
 __license__ = "BSD-2-Clause"
-__version__ = "0.1"
+__version__ = "0.2"
 __maintainer__ = "Sean Hooten"
 __status__ = "development"
 

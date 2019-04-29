@@ -9,15 +9,15 @@ import copy
 import numpy as np
 from mpi4py import MPI
 
+__author__ = "Sean Hooten"
+__license__ = "BSD-2-Clause"
+__version__ = "0.2"
+__maintainer__ = "Sean Hooten"
+__status__ = "development"
+
 COMM = MPI.COMM_WORLD
 RANK = COMM.Get_rank()
 SIZE = COMM.Get_size()
-
-__author__ = "Sean Hooten"
-__license__ = "BSD-2-Clause"
-__version__ = "0.1"
-__maintainer__ = "Sean Hooten"
-__status__ = "development"
 
 #def parallel_partition(num_sims, size, rank):
 #    # Returns curated 1D partition for each processor given the total number of
