@@ -9,4 +9,13 @@ trash.py
 .*.swp
 .DS_Store
 ._.DS_Store
-._*
+._
+
+#dist files
+build/
+build/lib/reqns
+!docs/build/
+reqns.egg-info/
+dist/
+docs/build/doctrees
+docs/build/html*

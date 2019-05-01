@@ -1,11 +1,11 @@
 from setuptools import setup
 
-with open("README", 'r') as f:
+with open("README.md", 'r') as f:
     long_description = f.read()
 
 setup(
    name='reqns',
-   version='0.1',
+   version='0.2',
    description='A versatile, parallelized LED and laser rate equations dynamic solver',
    license="BSD-2-Clause",
    long_description=long_description,
@@ -14,9 +14,10 @@ setup(
    url="http://github.com/smhooten/reqns",
    packages=['reqns'],
    install_requires=['numpy', 'scipy', 'fdint', 'mpi4py'],
-   zip_safe=False
+   zip_safe=True,
    scripts=[
             'scripts/TCSPC.py'
+	    'scripts/WDM.py'
            ]
 )
 

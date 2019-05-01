@@ -1,7 +1,7 @@
 import numpy as np
 #!/usr/bin/env python
 """
-Provides class LED_bulk, nanoLED_bulk, LED_QW, and nanoLED_QW. Also provides
+Provides classes LED_bulk, nanoLED_bulk, LED_QW, and nanoLED_QW. Also provides
 classes OpticalCavity and Antenna
 
 LED_bulk and LED_QW classes can be used to calculate spontaneous emission
@@ -15,7 +15,7 @@ spontaneous emission spectra after antenna enhancement.
 from math import pi, ceil
 from fdint import fdk
 
-from physical_constants import * # h, hbar, c, q, eps0, m0, k (SI)
+from physical_constants import h, hbar, c, q, eps0, m0, k
 import misc
 
 __author__ = "Sean Hooten"
@@ -26,25 +26,19 @@ __status__ = "development"
 
 class LED_bulk(object):
     def __init__(self, omega, DF, T, active_mat):
-        # inherit this data from active_mat instance?
         self.omega = omega
         self.DF = DF
         self.T = T
 
         self.active_mat = active_mat
-        #self.antenna = antenna
 
         self.tau = None
-        #self.tau_ant = None
         self.rspon = None
-        #self.rspon_ant = None
 
         self.Rnr = None
         self.Rspon = None
-        #self.Rspon_ant = None
 
         self.hvRspon = None
-        #self.hvRspon_ant = None
 
         # Need to make these settable
         #self.vg = c / self.active_mat.n # group velocity
