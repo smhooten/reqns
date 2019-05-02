@@ -115,7 +115,7 @@ class Bulk(ActiveMaterial):
         include support for light and heavy hole bands
     """
 
-    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, me, mh, M, Eg):
+    def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, me, mh, M, Eg, A, C):
         super(Bulk, self).__init__(Na, Nd, T)
         # Required Material Data
         self._n = n
@@ -128,6 +128,9 @@ class Bulk(ActiveMaterial):
 
         self._Nc = 2 * (2 * pi * me * k *self.T / h**2)**(1.5)
         self._Nv = 2 * (2 * pi * mh * k * self.T / h**2)**(1.5)
+
+        self._A = A
+        self._C = C
 
         # Required User Inputs
         self._DF_max = DF_max # assume minimum 0, max defined by source
@@ -148,6 +151,7 @@ class Bulk(ActiveMaterial):
         self._rho = None
         self._fg = None
         self._gain = None
+        self._gain_broadened = None
 
         self._correct_build = False
 
@@ -194,6 +198,24 @@ class Bulk(ActiveMaterial):
     @mh.setter
     def mh(self, val):
         self._mh = val
+        self._correct_build = False
+
+    @property
+    def A(self):
+        return self._A
+
+    @A.setter
+    def A(self, val):
+        self._A = val
+        self._correct_build = False
+
+    @property
+    def C(self):
+        return self._C
+
+    @C.setter
+    def C(self, val):
+        self._C = val
         self._correct_build = False
 
     @property
@@ -272,6 +294,10 @@ class Bulk(ActiveMaterial):
         return self._gain
 
     @property
+    def gain_broadened(self):
+        return self._gain_broadened
+
+    @property
     def E1(self):
         return self._E1
 
@@ -301,14 +327,22 @@ class Bulk(ActiveMaterial):
             gain[:, i] = self._calc_gain(fg[:, i])
 
         self._fg = fg
-        self._gain = gain
+
+        # each polarization sees the same gain
+        self._gain = np.zeros((self.omega.size, self.DF.size, 3))
+        self._gain[:,:,0] = gain
+        self._gain[:,:,1] = gain
+        self._gain[:,:,2] = gain
 
         if broaden_gain:
             gain_broadened = np.zeros((self.omega.size, self.DF.size))
             for i in range(self.DF.size):
                 gain_broadened[:,i] = \
-                    misc.lineshape_broadening(self._omega, self._gain[:,i], tau_m)
-            self._gain_broadened = gain_broadened
+                    misc.lineshape_broadening(self._omega, self._gain[:,i,0], tau_m)
+            self._gain_broadened = np.zeros((self.omega.size, self.DF.size, 3))
+            self._gain_broadened[:,:,0] = gain_broadened
+            self._gain_broadened[:,:,1] = gain_broadened
+            self._gain_broadened[:,:,2] = gain_broadened
 
         self._correct_build = True
 

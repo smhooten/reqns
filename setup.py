@@ -15,10 +15,6 @@ setup(
    packages=['reqns'],
    install_requires=['numpy', 'scipy', 'fdint', 'mpi4py'],
    zip_safe=True,
-   scripts=[
-            'scripts/TCSPC.py'
-	    'scripts/WDM.py'
-           ]
 )
 
 
