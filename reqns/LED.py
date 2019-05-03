@@ -82,6 +82,14 @@ class LED(object):
         return self._rspon
 
     @property
+    def rspon_lh(self):
+        return self._rspon_lh
+
+    @property
+    def rspon_hh(self):
+        return self._rspon_hh
+
+    @property
     def rspon_broadened(self):
         return self._rspon_broadened
 
@@ -102,6 +110,8 @@ class LED(object):
         return self._correct_build
 
     def build(self, broaden_rspon = False, tau_m = 0.1e-12):
+        assert self._active_mat.correct_build,"Active material not built."
+
         Rspon = np.zeros((self.DF.size))
         hvRspon = np.zeros((self.DF.size))
 
@@ -415,12 +425,10 @@ class nanoLED(LED):
 
 
 class Antenna(object):
-    def __init__(self, omega, Fx, Fy = 1.0, Fz = 1.0):
+    def __init__(self, omega, efficiency, Fx, Fy = 1.0, Fz = 1.0):
         self._omega = omega
 
-        self._Fx = None
-        self._Fy = None
-        self._Fz = None
+        self._efficiency = efficiency
 
         if np.all(Fy == 1.0):
             self._Fy = np.ones(omega.size)
@@ -441,6 +449,14 @@ class Antenna(object):
     @omega.setter
     def omega(self, val):
         self._omega = val
+
+    @property
+    def efficiency(self):
+        return self._efficiency
+
+    @efficiency.setter
+    def efficiency(self, val):
+        self._efficiency = val
 
     @property
     def Fx(self):

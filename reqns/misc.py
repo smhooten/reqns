@@ -7,7 +7,7 @@ from math import pi
 import numpy as np
 from fdint import fdk
 
-from physical_constants import *
+from physical_constants import hbar
 
 __author__ = "Sean Hooten"
 __license__ = "BSD-2-Clause"
@@ -32,7 +32,7 @@ def sinusoid(wt, A, phi, offset):
     return A*np.cos(wt+phi)+offset
 
 def lineshape_broadening(omega, spectrum, t_in):
-   # Lorentzian
+   # Assumes Lorentzian
    broadened = np.zeros(omega.size)
    const = hbar/t_in
    for i in range(omega.size):
@@ -40,6 +40,11 @@ def lineshape_broadening(omega, spectrum, t_in):
        broadened[i] = np.trapz(spectrum*L, x=hbar*omega)
 
    return broadened
+
+
+########
+#Faster lineshape calculation in development
+########
 
 #def lineshape_broadening(self, gain):
         #pass

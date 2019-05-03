@@ -469,7 +469,7 @@ class Bulk(ActiveMaterial):
 
 class QuantumWell(ActiveMaterial):
     def __init__(self, omega, DF_max, DF_dis, Na, Nd, T, n, M, Egw, Lz, mw,
-                 mw_lh, mw_hh, Egb = False, mb = False,
+                 mw_lh, mw_hh, A, C, Egb = False, mb = False,
                  mb_lh = False, mb_hh = False, delEc = False):
 
         super(QuantumWell, self).__init__(Na, Nd, T)
@@ -484,6 +484,9 @@ class QuantumWell(ActiveMaterial):
         self._mw = mw
         self._mw_hh = mw_hh
         self._mw_lh = mw_lh
+
+        self._A = A
+        self._C = C
 
         self._mr_hh = mw_hh*mw/(mw_hh + mw)
         self._mr_lh = mw_lh*mw/(mw_lh + mw)
@@ -598,6 +601,24 @@ class QuantumWell(ActiveMaterial):
     @mw_lh.setter
     def mw_lh(self, val):
         self._mw_lh = val
+        self._correct_build = False
+
+    @property
+    def A(self):
+        return self._A
+
+    @A.setter
+    def A(self, val):
+        self._A = val
+        self._correct_build = False
+
+    @property
+    def C(self):
+        return self._C
+
+    @C.setter
+    def C(self, val):
+        self._C = val
         self._correct_build = False
 
     @property

@@ -19,25 +19,6 @@ COMM = MPI.COMM_WORLD
 RANK = COMM.Get_rank()
 SIZE = COMM.Get_size()
 
-#def parallel_partition(num_sims, size, rank):
-#    # Returns curated 1D partition for each processor given the total number of
-#    # simulations required
-#
-#    simdisc = num_sims / size
-#    extra = num_sims % size
-#
-#    partition = range(simdisc*rank, simdisc*(rank+1))
-#
-#    if rank < extra:
-#        partition.append(simdisc*(rank+1))
-#
-#    partition = [x+rank if rank<extra else x+extra for x in partition]
-#
-#    print('Node {0} partition:'.format(rank))
-#    print partition
-#
-#    return partition
-
 def parallel_partition(num_sims):
     # Returns curated 1D partition for each processor given the total number of
     # simulations required
@@ -82,9 +63,25 @@ def create_master_array(num_sims, *args):
 
     return master_array
 
-##############
-## NOT WORKING DO NOT USE
-##############
+
+def run_on_master(func):
+
+    def wrapper(*args, **kwargs):
+        if(RANK == 0):
+            return func(*args, **kwargs)
+        else:
+            return
+
+    return wrapper
+
+
+
+
+################################################################
+
+################## NOT WORKING DO NOT USE ######################
+
+################################################################
 
 class SimulationManager(object):
     def __init__(self, reqns, LED_option, params, results=None):

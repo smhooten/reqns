@@ -7,6 +7,19 @@ import reqns
 from reqns.physical_constants import h, hbar, c, q, eps0, m0, k
 
 
+class WavelengthDivisionMultiplexer(object):
+    def __init__(self, eff, *args):
+        self.eff = eff
+
+        self.reqns_objects = []
+        for elem in args:
+            assert isinstance(elem, reqns.rate_equations.RateEquations)
+            self.reqns_objects.append(elem)
+
+        self.num = len(reqns_objects)
+
+ #   def find_optimal
+
 
 # Bulk InGaAs
 T = 300.0
@@ -33,15 +46,30 @@ mat = reqns.active_material.Bulk(omega, DF_max, DF_dis, Na, Nd, T, n, me, mh,
 mat.build()
 
 
-Fx = 10*np.ones(omega.size)
+Fx = np.ones(omega.size)
 
-antenna = reqns.LED.Antenna(omega, Fx)
+antenna = reqns.LED.Antenna(omega,1,Fx)
 sv_ratio = 2/(100e-9)
 srv = 1.0e4 * 1e-2
 
 led = reqns.LED.nanoLED(mat, antenna, srv, sv_ratio)
-led.build()
+led.build(broaden_rspon=True)
 
+t = [0.0, 1.0e-6]
+max_step = 1.0e-11
+I_func = lambda t: 0.001 + 1e-3*np.sin(2*pi*1e8*t)
+V = 1.0e-18
+N0 = [1.0e23]
+
+rate = reqns.rate_equations.RateEquations(led, t, I_func, max_step=max_step,
+                                          N0=N0, V=V)
+
+nn = 1e18*1e6
+I_guess = np.array([1e-5, 1e-3])
+
+I_list, _ = rate.find_desired_Idc(nn, I_guess, option='nanoLED')
+
+tt, Nt = rate.run('nanoLED')
 
 print mat.correct_build
 print led.correct_build
@@ -70,5 +98,9 @@ ax3.loglog(mat.N / 1e6, mat.N / led.Rspon_ant)
 f4 = plt.figure()
 ax4 = f4.add_subplot(111)
 ax4.semilogx(mat.N / 1e6, led.Rspon/(led.Rspon_ant + led.Rnr_ant))
+
+f7 = plt.figure()
+ax7 = f7.add_subplot(111)
+ax7.semilogy(tt, Nt)
 
 plt.show()
