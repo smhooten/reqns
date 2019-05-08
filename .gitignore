@@ -4,6 +4,7 @@
 trash.py
 
 #misc files
+*.npz
 *.h5
 *.pdf
 .*.swp

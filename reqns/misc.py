@@ -31,6 +31,11 @@ def fermi_dirac_integral(k, phi):
 def sinusoid(wt, A, phi, offset):
     return A*np.cos(wt+phi)+offset
 
+def sawtooth(t, w, A, offset):
+    period = 2*pi/w
+    if t / period / 2 <= 0.5:
+        return offset + A - 4*A/period * t
+
 def lineshape_broadening(omega, spectrum, t_in):
    # Assumes Lorentzian
    broadened = np.zeros(omega.size)

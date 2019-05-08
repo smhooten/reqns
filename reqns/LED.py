@@ -307,11 +307,11 @@ class nanoLED(LED):
 
     @property
     def Rspon_ant(self):
-        return self._Rspon
+        return self._Rspon_ant
 
     @property
     def hvRspon_ant(self):
-        return self._hvRspon
+        return self._hvRspon_ant
 
     @property
     def correct_build(self):
@@ -487,8 +487,8 @@ def purcell_enhancement(omega, w0, Q, Veff):
     # use this with Antenna class to define enhancement values for each dipole
     # polarization
 
-    F = (3/(4*pi**2)) / self.Veff * self.omega * self.w0 * self.Q / \
-            (4 * self.Q**2 * (self.omega - self.w0)**2 + self.w0**2)
+    F = (3/(4*pi**2)) / Veff * omega * w0 * Q / \
+            (4 * Q**2 * (omega - w0)**2 + w0**2)
 
     return F
 

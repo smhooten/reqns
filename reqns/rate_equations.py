@@ -50,7 +50,7 @@ class RateEquations(object):
 
     @t.setter
     def t(self, val):
-        self._t = t
+        self._t = val
 
     @property
     def I_func(self):
@@ -209,7 +209,7 @@ class RateEquations(object):
                 max_hvRspon = self.get_Rspon_ant(max_Nt)
                 min_hvRspon = self.get_Rspon_ant(min_Nt)
 
-        deltaP = (max_hvRspon - min_hvRspon)*self.V
+        deltaP = (max_hvRspon - min_hvRspon)
         return deltaP
 
     def calc_average_power(self, t, Nt, t_start, type_, option):
