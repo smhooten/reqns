@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from math import pi
 plt.rcParams.update({'font.size':20})
 
-filename = 'data_WDM_transfer2.npz'
+filename = 'data_WDM_transfer8.npz'
 
 files = np.load(filename)
 
@@ -30,10 +30,10 @@ ax2 = f.add_subplot(222)
 ax3 = f.add_subplot(223)
 ax4 = f.add_subplot(224)
 
-I1_ant0 = 0.2*I_master_ant0
-I1_ant1 = 0.2*I_master_ant1
-I1_ant2 = 0.2*I_master_ant2
-I1_ant3 = 0.2*I_master_ant3
+I1_ant0 = 0.5*I_master_ant0
+I1_ant1 = 0.5*I_master_ant1
+I1_ant2 = 0.5*I_master_ant2
+I1_ant3 = 0.5*I_master_ant3
 
 
 transfers_ant0 = np.zeros((ns_master.size, w_master.size))
@@ -55,17 +55,17 @@ colors = np.linspace(0,1,num=ns_master.size)
 V = 20e-9 * 100e-9 * 15e-9
 q = 1.602e-19
 
-for i in range(ns_master.size):
+for i in range(6,ns_master.size,1):
     print deltaP_ant0[i,0]
-    transfers_ant0[i,:] = deltaP_ant0[i,:]/(2*I1_ant0[i])/(0.75*q)*V
-    transfers_ant1[i,:] = deltaP_ant1[i,:]/(2*I1_ant1[i])/(0.75*q)*V
-    transfers_ant2[i,:] = deltaP_ant2[i,:]/(2*I1_ant2[i])/(0.75*q)*V
-    transfers_ant3[i,:] = deltaP_ant3[i,:]/(2*I1_ant3[i])/(0.75*q)*V
+    transfers_ant0[i,:] = deltaP_ant0[i,:]/(2*I1_ant0[i])/(0.75)*V
+    transfers_ant1[i,:] = deltaP_ant1[i,:]/(2*I1_ant1[i])/(0.75)*V
+    transfers_ant2[i,:] = deltaP_ant2[i,:]/(2*I1_ant2[i])/(0.75)*V
+    transfers_ant3[i,:] = deltaP_ant3[i,:]/(2*I1_ant3[i])/(0.75)*V
     
-    transfers_ant0_dc[i] = 0.5*transfers_ant0[i,0]
-    transfers_ant1_dc[i] = 0.5*transfers_ant1[i,0]
-    transfers_ant2_dc[i] = 0.5*transfers_ant2[i,0]
-    transfers_ant3_dc[i] = 0.5*transfers_ant3[i,0]
+    transfers_ant0_dc[i] = 0.5*transfers_ant0[i,0]*V
+    transfers_ant1_dc[i] = 0.5*transfers_ant1[i,0]*V
+    transfers_ant2_dc[i] = 0.5*transfers_ant2[i,0]*V
+    transfers_ant3_dc[i] = 0.5*transfers_ant3[i,0]*V
     
     transfers_ant0[i,:] = np.flipud(transfers_ant0[i,:])
     transfers_ant1[i,:] = np.flipud(transfers_ant1[i,:])
@@ -101,7 +101,7 @@ ax4.set_xlabel('Frequency (Hz)')
 
 f3 =plt.figure()
 axxxx=f3.add_subplot(111)
-for i in range(ns_master.size):
+for i in range(6,ns_master.size,1):
     ratio1 = 0.4*0.9*(transfers_ant1[i,:]+transfers_ant2[i,:]+transfers_ant3[i,:])
     ratio2 = 0.6*transfers_ant0[i,:]
     ratio = ratio1/ratio2

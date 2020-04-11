@@ -323,6 +323,8 @@ class nanoLED(LED):
         Rspon_ant = np.zeros((self.DF.size))
         hvRspon_ant = np.zeros((self.DF.size))
         Rnr_ant = np.zeros((self.DF.size))
+        rad_lifetime_ant = np.zeros((self.DF.size))
+        nr_lifetime_ant = np.zeros((self.DF.size))
 
         self.calc_rspon_ant()
         rspon_ant = self.rspon_ant
@@ -341,9 +343,15 @@ class nanoLED(LED):
             hvRspon_ant[i] = self.calc_hvRspon_ant(rspon_ant[:, i, :])
             Rnr_ant[i] = self.calc_Rnr_ant(i, self._active_mat.N[i], self._active_mat.P[i])
 
+        for i in range(1,self.DF.size-1, 1):
+            rad_lifetime_ant[i] = self.calc_radiative_lifetime(Rspon_ant, self._active_mat.N, i)
+            nr_lifetime_ant[i] = self.calc_radiative_lifetime(Rnr_ant, self._active_mat.N, i)
+
         self._Rnr_ant = Rnr_ant
         self._Rspon_ant = Rspon_ant
         self._hvRspon_ant = hvRspon_ant
+        self._rad_lifetime_ant = rad_lifetime_ant
+        self._nr_lifetime_ant = nr_lifetime_ant
 
     def calc_rspon_ant(self):
         if self._mat == 'Bulk':
@@ -421,6 +429,17 @@ class nanoLED(LED):
         #Rsrv /= 2.0 # accounts for hole or electron dominated srv?
 
         return Rnr_bare + Rsrv
+
+    def calc_radiative_lifetime(self, Rspon, N, i):
+        dR_dN = (Rspon[i+1] - Rspon[i-1])/(N[i+1]-N[i-1])
+        lifetime = dR_dN**(-1)
+        return(lifetime)
+
+    def calc_nonradiative_lifetime(self, Rnr, N, i):
+        dR_dN = (Rnr[i+1] - Rnr[i-1])/(N[i+1]-N[i-1])
+        lifetime = dR_dN**(-1)
+        return(lifetime)
+        
 
 
 

@@ -1,7 +1,7 @@
 import copy
 
 import numpy as np
-from math import pi
+from math import pi, floor
 import matplotlib.pyplot as plt
 
 import reqns
@@ -16,6 +16,26 @@ plt.rcParams.update({'font.size':24, 'font.weight':'bold', 'font.family':'arial'
 #def sawtooth(t, I0, dI, w):
 #    
 
+def sawtooth(t, w, A, offset):
+    period = 2*pi/w
+    if np.isscalar(t):
+        num = int(np.floor(t/period))
+        if (t - num*period)/period <= 0.5:
+            return offset + A - 2*A/period * (t-num*period)
+        else:
+	    return offset - A + 2*A/period * (t-num*period)
+
+    else:
+    	ttt = np.array([t])
+    	I = np.zeros(ttt.size)
+    	for i in range(ttt.size):
+	    tt = ttt[0][i]
+            num = int(np.floor(tt/period))
+            if (tt - num*period)/period <= 0.5:
+                I[i] = offset + A - 2*A/period * (tt-num*period)
+            else:
+	        I[i] = offset - A + 2*A/period * (tt-num*period)
+	return I
 
 class WavelengthDivisionMultiplexer(object):
     def __init__(self, eff, *args):
@@ -95,6 +115,20 @@ class WavelengthDivisionMultiplexer(object):
 
         self.fractions = fractions
 
+I_func = lambda t: sawtooth(t, 2*pi*1e9, 2, 1)
+
+t = np.linspace(0,1e-8,num=1000)
+I = np.zeros(1000)
+
+#for i in range(1000):
+#	I[i] = I_func(t[i])
+I = I_func(t)
+
+f8 = plt.figure()
+ax8 = f8.add_subplot(111)
+ax8.plot(t*1e9, I)
+
+plt.show()
 # Bulk InGaAs
 T = 300.0
 Na = 0.0
@@ -110,9 +144,9 @@ M = (m0/6) * Ep
 A = 1.0/1.0e-8
 C = 1e-28 * 1e-12
 
-omega = np.linspace(0.5, 3.0, num = 5000) * q / hbar
+omega = np.linspace(0.5, 3.0, num = 2000) * q / hbar
 DF_max = 1.5 * q
-DF_dis = DF_max / 3000
+DF_dis = DF_max / 500
 
 mat = reqns.active_material.Bulk(omega, DF_max, DF_dis, Na, Nd, T, n, me, mh,
                                  M, Eg, A, C)
@@ -128,7 +162,8 @@ efficiency3 = 0.4*np.ones(omega.size)
 lam1 = 2*pi*c/(1.55e-6)
 lam2 = 2*pi*c/(1.4e-6)
 lam3 = 2*pi*c/(1.25e-6)
-Fx0 = reqns.LED.purcell_enhancement(omega, lam2, 10.0, 1.0/1000)
+#Fx0 = reqns.LED.purcell_enhancement(omega, lam2, 10.0, 1.0/100)
+Fx0 = np.ones(omega.size)
 Fx1 = reqns.LED.purcell_enhancement(omega, lam1, 30.0, 1.0/1000)
 Fx2 = reqns.LED.purcell_enhancement(omega, lam2, 30.0, 1.0/1000)
 Fx3 = reqns.LED.purcell_enhancement(omega, lam3, 30.0, 1.0/1000)
@@ -162,13 +197,20 @@ led2.build(broaden_rspon=False)
 led3.build(broaden_rspon=False)
 
 
-#f = plt.figure()
-#ax = f.add_subplot(111)
+f = plt.figure()
+ax = f.add_subplot(111)
+f2 = plt.figure()
+ax2 = f2.add_subplot(111)
 #f2 = plt.figure()
 #ax2 = f2.add_subplot(111)
 #f3 = plt.figure()
 #ax3 = f3.add_subplot(111)
-#ax.plot(2*pi*c/omega*1e6, led2.rspon_ant[:,-1,0]/np.max(led2.rspon[:,-1,0]),'-r')
+#print mat.N /1e6
+#colors = np.linspace(0,1,152/2-64/2)
+#for i in range(64,152,2):
+#	ax.plot(2*pi*c/omega*1e6, led2.rspon[:,i,0]/np.max(led2.rspon[:,152,0]),color=(colors[i/2-32],0,1-colors[i/2-32]))
+#	ax.plot(2*pi*c/omega*1e6, Fx2/np.max(Fx2), '--k')
+#	ax2.plot(2*pi*c/omega*1e6, led2.rspon_ant[:,i,0]/np.max(led2.rspon[:,152,0]),color=(colors[i/2-32],0,1-colors[i/2-32]))
 #ax2.plot(2*pi*c/omega*1e6,led3.rspon_ant[:,-1,0]/np.max(led3.rspon[:,-1,0]),'-b')
 #ax.set_ylim([-0.5,80.5])
 #ax2.set_ylim([-0.5,80.5])
@@ -236,22 +278,24 @@ wdm.find_collected_power(5.0e18*1e6)
 #print np.array(wdm.windows)*hbar/q
 #print wdm.windows_inds
 ns_master = np.linspace(1.0e17,1.0e19,num=61)*1e6
-#nn = 5.0e24
+nn = 0.5e24
 I_guess = np.array([1e-10, 1.0e-3])
 
-#I_list, _ = rate0.find_desired_Idc(nn, I_guess, option='nanoLED')
+I_list, _ = rate0.find_desired_Idc(nn, I_guess, option='nanoLED')
 
-#rate0.I_func = lambda t: I_list[0]+I_list[0]*np.sin(2*pi*1e9*t)
+#`rate0.I_func = lambda t: I_list[0]+I_list[0]*np.sin(2*pi*1e9*t)
+rate0.I_func = lambda t: sawtooth(t, 2*pi*1e9, 0.5*I_list[0], I_list[0])
+rate0.max_step = 1.0e-12
 
-#tt, Nt = rate0.run('nanoLED')
-#f7 = plt.figure()
-#ax7 = f7.add_subplot(111)
-#ax7.plot(tt*1e9, Nt/1e6)
-#f8 = plt.figure()
-#ax8 = f8.add_subplot(111)
-#ax8.plot(tt*1e9, rate0.I_func(tt))
+tt, Nt = rate0.run('nanoLED')
+f7 = plt.figure()
+ax7 = f7.add_subplot(111)
+ax7.plot(tt*1e9, Nt/1e6)
+f8 = plt.figure()
+ax8 = f8.add_subplot(111)
+ax8.plot(tt*1e9, rate0.I_func(tt)/1e-6)
 
-#plt.show()
+plt.show()
 num_sims = int(ns_master.size)
 partition = parallel_partition(num_sims)
 

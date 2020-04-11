@@ -3,7 +3,7 @@
 Provides a few useful functions
 """
 
-from math import pi
+from math import pi, floor
 import numpy as np
 from fdint import fdk
 
@@ -33,8 +33,11 @@ def sinusoid(wt, A, phi, offset):
 
 def sawtooth(t, w, A, offset):
     period = 2*pi/w
-    if t / period / 2 <= 0.5:
+    num = floor(t/period)
+    if t / (n*period / 2) <= 0.5:
         return offset + A - 4*A/period * t
+    else:
+	return offset - A + 4*A/period * t
 
 def lineshape_broadening(omega, spectrum, t_in):
    # Assumes Lorentzian
